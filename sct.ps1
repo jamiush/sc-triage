@@ -1,4 +1,4 @@
-# Supply Chain Triage CLI (SCT) v2.0 - Windows PowerShell 5.1+
+# Supply Chain Triage CLI (SCT) v2.1 - Windows PowerShell 5.1+
 # Mini Shai-Hulud Edition  .  TeamPCP  .  CVE-2026-45321
 #
 # Interactive:  .\sct.ps1
@@ -17,7 +17,7 @@ param(
     [switch]  $Help
 )
 
-$SCT_VERSION = '2.0.0'
+$SCT_VERSION = '2.1.0'
 $SCT_DATE    = Get-Date -Format 'yyyyMMdd-HHmmss'
 $script:TotalFindings = 0
 $script:TotalWarns = 0
@@ -48,7 +48,10 @@ function ExpandPathLocal {
 
 # ---- DEFAULTS ---------------------------------------------------------------
 $DefaultIOCs = @(
-    'zero.masscan.cloud', '94.154.172.43', 'masscan.cloud', 'beautifulcastle'
+    'zero.masscan.cloud', '94.154.172.43', 'masscan.cloud', 'beautifulcastle',
+    'api.masscan.cloud',
+    'filev2.getsession.org', 'seed1.getsession.org', 'seed2.getsession.org', 'seed3.getsession.org',
+    'git-tanstack.com', 'litter.catbox.moe'
 )
 
 # All patterns are single-quoted to prevent PS escape/expansion issues.
@@ -87,16 +90,105 @@ $DefaultSecretPatterns = @(
 )
 
 $DefaultPackages = @(
-    '@cap-js/sqlite','@cap-js/hana','@cap-js/cds-dbs','intercom-client'
-    '@tanstack/react-router','@tanstack/react-query','@tanstack/react-table'
-    '@tanstack/react-virtual','@tanstack/router','@tanstack/query-core'
-    '@tanstack/store','@tanstack/react-form','@tanstack/router-devtools'
-    '@tanstack/query-devtools','@tanstack/start'
-    '@mistralai/mistralai','@uipath/scripting'
-    '@antv/g2','@antv/g6','@antv/x6','@antv/l7','@antv/s2','@antv/f2'
-    '@antv/g','@antv/g2plot','@antv/graphin','@antv/data-set'
-    '@antv/hierarchy','@antv/event-emitter','@antv/matrix-util'
-    'echarts-for-react','timeago.js','size-sensor','canvas-nest.js','g2plot'
+    # TanStack router/start ecosystem — 42 packages, GHSA-g7cv-rxg3-hmpx
+    '@tanstack/arktype-adapter',          '@tanstack/eslint-plugin-router',
+    '@tanstack/eslint-plugin-start',      '@tanstack/history',
+    '@tanstack/nitro-v2-vite-plugin',     '@tanstack/react-router',
+    '@tanstack/react-router-devtools',    '@tanstack/react-router-ssr-query',
+    '@tanstack/react-start',              '@tanstack/react-start-client',
+    '@tanstack/react-start-rsc',          '@tanstack/react-start-server',
+    '@tanstack/router-cli',               '@tanstack/router-core',
+    '@tanstack/router-devtools',          '@tanstack/router-devtools-core',
+    '@tanstack/router-generator',         '@tanstack/router-plugin',
+    '@tanstack/router-ssr-query-core',    '@tanstack/router-utils',
+    '@tanstack/router-vite-plugin',       '@tanstack/solid-router',
+    '@tanstack/solid-router-devtools',    '@tanstack/solid-router-ssr-query',
+    '@tanstack/solid-start',              '@tanstack/solid-start-client',
+    '@tanstack/solid-start-server',       '@tanstack/start-client-core',
+    '@tanstack/start-fn-stubs',           '@tanstack/start-plugin-core',
+    '@tanstack/start-server-core',        '@tanstack/start-static-server-functions',
+    '@tanstack/start-storage-context',    '@tanstack/valibot-adapter',
+    '@tanstack/virtual-file-routes',      '@tanstack/vue-router',
+    '@tanstack/vue-router-devtools',      '@tanstack/vue-router-ssr-query',
+    '@tanstack/vue-start',                '@tanstack/vue-start-client',
+    '@tanstack/vue-start-server',         '@tanstack/zod-adapter',
+    # Mistral AI — npm packages + PyPI
+    '@mistralai/mistralai', '@mistralai/mistralai-azure', '@mistralai/mistralai-gcp',
+    'mistralai',      # PyPI: pip install mistralai==2.4.6 is affected
+    # OpenSearch
+    '@opensearch-project/opensearch',
+    # UiPath platform / AI tooling
+    '@uipath/access-policy-sdk',          '@uipath/access-policy-tool',
+    '@uipath/admin-tool',                 '@uipath/agent-sdk',
+    '@uipath/agent-tool',                 '@uipath/agent.sdk',
+    '@uipath/aops-policy-tool',           '@uipath/ap-chat',
+    '@uipath/api-workflow-tool',          '@uipath/apollo-core',
+    '@uipath/apollo-react',               '@uipath/apollo-wind',
+    '@uipath/auth',                       '@uipath/case-tool',
+    '@uipath/cli',                        '@uipath/codedagent-tool',
+    '@uipath/codedagents-tool',           '@uipath/codedapp-tool',
+    '@uipath/common',                     '@uipath/context-grounding-tool',
+    '@uipath/data-fabric-tool',           '@uipath/docsai-tool',
+    '@uipath/filesystem',                 '@uipath/flow-tool',
+    '@uipath/functions-tool',             '@uipath/gov-tool',
+    '@uipath/identity-tool',              '@uipath/insights-sdk',
+    '@uipath/insights-tool',              '@uipath/integrationservice-sdk',
+    '@uipath/integrationservice-tool',    '@uipath/llmgw-tool',
+    '@uipath/maestro-sdk',                '@uipath/maestro-tool',
+    '@uipath/orchestrator-tool',          '@uipath/packager-tool-apiworkflow',
+    '@uipath/packager-tool-bpmn',         '@uipath/packager-tool-case',
+    '@uipath/packager-tool-connector',    '@uipath/packager-tool-flow',
+    '@uipath/packager-tool-functions',    '@uipath/packager-tool-webapp',
+    '@uipath/packager-tool-workflowcompiler',
+    '@uipath/packager-tool-workflowcompiler-browser',
+    '@uipath/platform-tool',              '@uipath/project-packager',
+    '@uipath/resource-tool',              '@uipath/resourcecatalog-tool',
+    '@uipath/resources-tool',             '@uipath/robot',
+    '@uipath/rpa-legacy-tool',            '@uipath/rpa-tool',
+    '@uipath/solution-packager',          '@uipath/solution-tool',
+    '@uipath/solutionpackager-sdk',       '@uipath/solutionpackager-tool-core',
+    '@uipath/tasks-tool',                 '@uipath/telemetry',
+    '@uipath/test-manager-tool',          '@uipath/tool-workflowcompiler',
+    '@uipath/traces-tool',                '@uipath/ui-widgets-multi-file-upload',
+    '@uipath/uipath-python-bridge',       '@uipath/vertical-solutions-tool',
+    '@uipath/vss',                        '@uipath/widget.sdk',
+    # DraftAuth / DraftLab auth stack
+    '@draftauth/client', '@draftauth/core',
+    '@draftlab/auth',    '@draftlab/auth-router', '@draftlab/db',
+    # CLI / SDK tools
+    '@taskflow-corp/cli', '@tolka/cli',
+    '@supersurkhet/cli',  '@supersurkhet/sdk',
+    '@dirigible-ai/sdk',  'agentwork-cli',
+    # MCP (Model Context Protocol) servers
+    'cmux-agent-mcp', 'nextmove-mcp', '@squawk/mcp',
+    # Git utilities
+    'git-git-git', 'git-branch-selector',
+    # Auth / backend
+    '@beproduct/nestjs-auth', 'safe-action',
+    # ML Toolkit (TypeScript)
+    '@ml-toolkit-ts/preprocessing', '@ml-toolkit-ts/xgboost', 'ml-toolkit-ts',
+    # Squawk aviation platform
+    '@squawk/airport-data',       '@squawk/airports',        '@squawk/airspace',
+    '@squawk/airspace-data',      '@squawk/airway-data',     '@squawk/airways',
+    '@squawk/fix-data',           '@squawk/fixes',           '@squawk/flight-math',
+    '@squawk/flightplan',         '@squawk/geo',             '@squawk/icao-registry',
+    '@squawk/icao-registry-data', '@squawk/navaid-data',     '@squawk/navaids',
+    '@squawk/notams',             '@squawk/procedure-data',  '@squawk/procedures',
+    '@squawk/types',              '@squawk/units',           '@squawk/weather',
+    # TallyUI e-commerce platform
+    '@tallyui/components',            '@tallyui/connector-medusa',
+    '@tallyui/connector-shopify',     '@tallyui/connector-vendure',
+    '@tallyui/connector-woocommerce', '@tallyui/core',
+    '@tallyui/database',              '@tallyui/pos',
+    '@tallyui/storage-sqlite',        '@tallyui/theme',
+    # MesaDev
+    '@mesadev/rest', '@mesadev/saguaro', '@mesadev/sdk',
+    # Miscellaneous npm
+    'wot-api', 'cross-stitch', 'ts-dna',
+    # PyPI
+    'guardrails-ai',  # PyPI: pip install guardrails-ai==0.10.1 is affected
+    # Worm attack-vector marker — fictitious package; any lockfile hit = compromise
+    '@tanstack/setup'
 )
 
 # ---- RESOLVED AT RUNTIME ----------------------------------------------------
@@ -141,7 +233,7 @@ function Show-Help {
     Write-Host '  all          Full triage: machine + deps'
     Write-Host '  machine      IOCs, secrets, shell history, git history'
     Write-Host '  deps         Dependency audit (8 ecosystems)'
-    Write-Host '  ide          VS Code extension audit checklist'
+    Write-Host '  ide          IDE audit: VS Code, JetBrains, Sublime Text, Vim/Neovim, Atom'
     Write-Host '  platform     ADO / GitHub platform audit guidance'
     Write-Host '  harden       Print hardening configs'
     Write-Host ''
@@ -225,7 +317,7 @@ function Invoke-MachineScan {
     $startFindings = $script:TotalFindings
 
     # 1. Network connections
-    SubHead '1/6  Network connections'
+    SubHead '1/8  Network connections'
     foreach ($ioc in $script:AllIOCs) {
         $hit = netstat -ano 2>$null | Select-String -Pattern $ioc -SimpleMatch
         if ($hit) { CritMsg ('ACTIVE CONNECTION: ' + $ioc) }
@@ -233,7 +325,7 @@ function Invoke-MachineScan {
     }
 
     # 2. Hosts + DNS
-    SubHead '2/6  Hosts file and DNS'
+    SubHead '2/8  Hosts file and DNS'
     $hostsPath = $env:SystemRoot + '\System32\drivers\etc\hosts'
     $suspicious = Get-Content $hostsPath -ErrorAction SilentlyContinue |
         Where-Object { $_ -notmatch '^#|^$|127\.0\.0\.1|::1|0\.0\.0\.0' }
@@ -248,7 +340,7 @@ function Invoke-MachineScan {
     }
 
     # 3. PowerShell history
-    SubHead '3/6  PowerShell history'
+    SubHead '3/8  PowerShell history'
     $histPath = $null
     try { $histPath = (Get-PSReadLineOption -ErrorAction SilentlyContinue).HistorySavePath } catch {}
     if ($histPath -and (Test-Path $histPath)) {
@@ -271,7 +363,7 @@ function Invoke-MachineScan {
     }
 
     # 4. Environment + credential files
-    SubHead '4/6  Environment variables and credential files'
+    SubHead '4/8  Environment variables and credential files'
     $envScopes = @{
         Process = [System.Environment]::GetEnvironmentVariables('Process')
         User    = [System.Environment]::GetEnvironmentVariables('User')
@@ -325,7 +417,7 @@ function Invoke-MachineScan {
     }
 
     # 5. Git history
-    SubHead '5/6  Git history secret scan'
+    SubHead '5/8  Git history secret scan'
     $foundGitRepo = $false
 
     foreach ($scanDir in $script:ScanDirs) {
@@ -392,7 +484,7 @@ function Invoke-MachineScan {
     if (-not $foundGitRepo) { SkipMsg 'No git repository found in scanned directories' }
 
     # 6. Processes + scheduled tasks
-    SubHead '6/7  Processes and scheduled tasks'
+    SubHead '6/8  Processes and scheduled tasks'
     $cimProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object {
             ($_.Name -imatch $script:IOCPattern) -or
@@ -411,7 +503,7 @@ function Invoke-MachineScan {
     } else { OkMsg 'No unexpected scheduled tasks' }
 
     # 7. Windows persistence locations
-    SubHead '7/7  Windows persistence locations'
+    SubHead '7/8  Windows persistence locations'
     $runKeys = @(
         'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
         'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce',
@@ -474,6 +566,111 @@ function Invoke-MachineScan {
             WarnMsg 'IOC in Git Bash history:'
             $hits | Select-Object -First 5 | ForEach-Object { Write-Host ('  ' + $_.Line) }
         } else { OkMsg 'Git Bash history clean' }
+    }
+
+    # 8. Malware artifact scan
+    SubHead '8/8  Malware artifact scan'
+    $artifactHits = 0
+    $artifactRoots = @($env:USERPROFILE) + @($script:ScanDirs | ForEach-Object { ExpandPathLocal $_ } | Where-Object { Test-Path $_ })
+    foreach ($afile in @('router_init.js','tanstack_runner.js')) {
+        $foundPaths = @()
+        foreach ($root in $artifactRoots) {
+            try {
+                $found = Get-ChildItem -Path $root -Filter $afile -Recurse -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -notmatch '[\\/]node_modules[\\/]\.cache[\\/]' } |
+                    Select-Object -First 5
+                if ($found) { $foundPaths += $found.FullName }
+            } catch {}
+        }
+        if ($foundPaths.Count -gt 0) {
+            CritMsg ('Malicious payload file found: ' + $afile)
+            $foundPaths | Select-Object -First 5 | ForEach-Object { Write-Host ('    ' + $_) }
+            $artifactHits++
+        }
+    }
+
+    # Check for worm persistence files
+    $persistFiles = @(
+        (Join-Path $env:USERPROFILE '.claude\router_runtime.js'),
+        (Join-Path $env:USERPROFILE '.claude\setup.mjs'),
+        (Join-Path $env:USERPROFILE '.vscode\setup.mjs')
+    )
+    foreach ($pf in $persistFiles) {
+        if (Test-Path $pf) {
+            CritMsg ('Worm persistence file found: ' + $pf)
+            $artifactHits++
+        }
+    }
+
+    # Check per-repo persistence files in scan dirs
+    foreach ($scanDir in $script:ScanDirs) {
+        $expandedDir = ExpandPathLocal $scanDir
+        if (-not (Test-Path $expandedDir)) { continue }
+        foreach ($rel in @('.claude\router_runtime.js', '.claude\setup.mjs', '.vscode\setup.mjs')) {
+            $fp = Join-Path $expandedDir $rel
+            if (Test-Path $fp) {
+                CritMsg ('Worm persistence file found: ' + $fp)
+                $artifactHits++
+            }
+        }
+    }
+
+    # Check package.json for @tanstack/setup in optionalDependencies (worm attack-vector marker)
+    foreach ($scanDir in $script:ScanDirs) {
+        $expandedDir = ExpandPathLocal $scanDir
+        if (-not (Test-Path $expandedDir)) { continue }
+        $pkgJson = Join-Path $expandedDir 'package.json'
+        if (Test-Path $pkgJson) {
+            try {
+                $pj = Get-Content $pkgJson -Raw | ConvertFrom-Json
+                $od = $pj.optionalDependencies
+                if ($od) {
+                    $odNames = $od.PSObject.Properties.Name
+                    if ($odNames -contains '@tanstack/setup') {
+                        CritMsg ('@tanstack/setup in optionalDependencies of ' + $pkgJson + ' - this is the worm attack-vector marker')
+                        $artifactHits++
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    # Check for suspicious npm token (ransom threat marker)
+    $ransomMarker = 'IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner'
+    $npmrcPaths = @(
+        (Join-Path $env:USERPROFILE '.npmrc'),
+        (Join-Path $env:APPDATA 'npm\etc\npmrc'),
+        (Join-Path $env:USERPROFILE '.config\npm\npmrc')
+    )
+    foreach ($np in $npmrcPaths) {
+        if (Test-Path $np) {
+            $rt = Select-String -Path $np -Pattern $ransomMarker -SimpleMatch -ErrorAction SilentlyContinue
+            if ($rt) {
+                CritMsg 'RANSOMWARE npm token marker found - DO NOT REVOKE without isolating machine first'
+            }
+        }
+    }
+
+    # Check for injected Claude Code hooks
+    $claudeHooksJson = Join-Path $env:USERPROFILE '.claude\hooks.json'
+    $claudeHooksDir  = Join-Path $env:USERPROFILE '.claude\hooks'
+    if ((Test-Path $claudeHooksJson) -or (Test-Path $claudeHooksDir)) {
+        InfoMsg ('Claude Code hooks present - verify these are expected: ' + (Join-Path $env:USERPROFILE '.claude\hooks*'))
+    }
+
+    # Check for injected GH Actions workflow
+    foreach ($scanDir in $script:ScanDirs) {
+        $expandedDir = ExpandPathLocal $scanDir
+        if (-not (Test-Path $expandedDir)) { continue }
+        $codeqlPath = Join-Path $expandedDir '.github\workflows\codeql_analysis.yml'
+        if (Test-Path $codeqlPath) {
+            WarnMsg ('Suspicious injected workflow: ' + $codeqlPath + ' - verify this was intentionally added')
+        }
+    }
+
+    if ($artifactHits -eq 0) {
+        OkMsg 'No known malware artifact files found'
+        InfoMsg 'Known SHA-256: router_init.js=ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c  tanstack_runner.js=2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96'
     }
 
     $delta = $script:TotalFindings - $startFindings
@@ -935,6 +1132,7 @@ function Invoke-PlatformChecklist {
     Write-Host '  [ ]  [HIGH]     Service Connections - verify no post-April-29 additions' -ForegroundColor Yellow
     Write-Host '  [ ]  [HIGH]     Variable Groups - rotate modified post-April-29' -ForegroundColor Yellow
     Write-Host '  [ ]  [MED]      Pipeline runs May 10-20 - flag anomalies' -ForegroundColor Cyan
+    Write-Host '  [ ]  [HIGH]     Search pipeline run logs (May 10-20) for outbound HTTPS to getsession.org or git-tanstack.com' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '  GitHub' -ForegroundColor White
     Write-Host '  [ ]  [CRITICAL]  Security Log - filter oauth_access, PAT creation May 10-20' -ForegroundColor Red
@@ -943,6 +1141,11 @@ function Invoke-PlatformChecklist {
     Write-Host '  [ ]  [HIGH]     Authorized OAuth Apps - revoke write:packages or repo scope' -ForegroundColor Yellow
     Write-Host '  [ ]  [HIGH]     Org Audit log -> filter fork, pull_request -> look for zblgg' -ForegroundColor Yellow
     Write-Host '  [ ]  [HIGH]     Actions secrets -> rotate all regardless of triage result' -ForegroundColor Yellow
+    Write-Host "  [ ]  [HIGH]     Search commits/PRs for author 'voicproducoes' or email 'voicproducoes@gmail.com'" -ForegroundColor Yellow
+    Write-Host "  [ ]  [HIGH]     Search commits for author 'claude@users.noreply.github.com' (malware self-commit marker)" -ForegroundColor Yellow
+    Write-Host "  [ ]  [HIGH]     Check for branches matching 'dependabot/github_actions/format/*' (attacker branch pattern)" -ForegroundColor Yellow
+    Write-Host "  [ ]  [HIGH]     Audit .github/workflows/ for injected 'codeql_analysis.yml' added after May 10" -ForegroundColor Yellow
+    Write-Host '  [ ]  [CRITICAL]  WARNING: Do NOT revoke npm tokens before isolating affected machine - payload contains destructive wipe triggered by revocation' -ForegroundColor Red
     $script:ModuleResults['platform'] = 'CHECKLIST'
 }
 
@@ -972,7 +1175,10 @@ function Invoke-Harden {
     Write-Host '   npm ci --ignore-scripts'
     Write-Host '   pnpm install --frozen-lockfile --ignore-scripts'
     Write-Host ''
-    Write-Host '5. Block IOC domains: zero.masscan.cloud | 94.154.172.43' -ForegroundColor White
+    Write-Host '5. Block IOC domains at firewall/DNS:' -ForegroundColor White
+    Write-Host '     zero.masscan.cloud | api.masscan.cloud | 94.154.172.43'
+    Write-Host '     filev2.getsession.org | seed1.getsession.org | seed2.getsession.org | seed3.getsession.org'
+    Write-Host '     git-tanstack.com | litter.catbox.moe'
     $script:ModuleResults['harden'] = 'DONE'
 }
 
@@ -1025,7 +1231,7 @@ function Show-Menu {
         Write-Host '  [1]  Full Triage       machine scan + dependency audit' -ForegroundColor Cyan
         Write-Host '  [2]  Machine Scan      IOCs, secrets, shell history, git history' -ForegroundColor Cyan
         Write-Host '  [3]  Dependency Audit  npm, pnpm, yarn, pip, cargo, go, composer, nuget' -ForegroundColor Cyan
-        Write-Host '  [4]  IDE Audit         VS Code extension checklist' -ForegroundColor Cyan
+        Write-Host '  [4]  IDE Audit         VS Code, JetBrains, Sublime, Vim/Neovim, Atom' -ForegroundColor Cyan
         Write-Host '  [5]  Platform Audit    ADO / GitHub guidance' -ForegroundColor Cyan
         Write-Host '  [6]  Hardening         print config recommendations' -ForegroundColor Cyan
         Write-Host ''

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ┌─────────────────────────────────────────────────────────────────────────┐
-# │  Supply Chain Triage CLI  (SCT)  v2.0                                   │
+# │  Supply Chain Triage CLI  (SCT)  v2.1                                   │
 # │  Mini Shai-Hulud Edition  ·  TeamPCP  ·  CVE-2026-45321                 │
 # │                                                                         │
 # │  Interactive:  ./sct.sh                                                 │
@@ -9,7 +9,7 @@
 # └─────────────────────────────────────────────────────────────────────────┘
 
 set -euo pipefail
-SCT_VERSION="2.0.0"
+SCT_VERSION="2.1.0"
 SCT_DATE="$(date -u +%Y%m%d-%H%M%S)"
 
 # ── RUNTIME STATE ────────────────────────────────────────────────────────────
@@ -49,6 +49,9 @@ redact() { sed -E "s/([:=][[:space:]]*['\"]?)[^'\"[:space:]#]{8,}/\1***REDACTED*
 # ── DEFAULT IOC LIST ──────────────────────────────────────────────────────────
 DEFAULT_IOCS=(
   "zero.masscan.cloud" "94.154.172.43" "masscan.cloud" "beautifulcastle"
+  "api.masscan.cloud"
+  "filev2.getsession.org" "seed1.getsession.org" "seed2.getsession.org" "seed3.getsession.org"
+  "git-tanstack.com" "litter.catbox.moe"
 )
 
 # ── DEFAULT SECRET PATTERNS (case-insensitive grep -E) ────────────────────────
@@ -84,17 +87,108 @@ DEFAULT_SECRET_PATTERNS=(
   "^(SECRET|TOKEN|API_KEY|PASSWORD|CREDENTIAL|PRIVATE_KEY|DB_PASS(WORD)?|AUTH_SECRET|ENCRYPTION_KEY|SIGNING_KEY|SERVICE_ACCOUNT)[[:space:]]*=[[:space:]]*[^#[:space:]]{8,}"
 )
 
-# ── DEFAULT COMPROMISED PACKAGES (all Mini Shai-Hulud waves) ─────────────────
+# ── DEFAULT COMPROMISED PACKAGES (Mini Shai-Hulud + downstream waves) ────────
 DEFAULT_PKGS=(
-  "@cap-js/sqlite" "@cap-js/hana" "@cap-js/cds-dbs" "intercom-client"
-  "@tanstack/react-router" "@tanstack/react-query" "@tanstack/react-table"
-  "@tanstack/react-virtual" "@tanstack/router" "@tanstack/query-core"
-  "@tanstack/store" "@tanstack/react-form" "@tanstack/router-devtools"
-  "@tanstack/query-devtools" "@tanstack/start" "@mistralai/mistralai" "@uipath/scripting"
-  "@antv/g2" "@antv/g6" "@antv/x6" "@antv/l7" "@antv/s2" "@antv/f2"
-  "@antv/g" "@antv/g2plot" "@antv/graphin" "@antv/data-set"
-  "@antv/hierarchy" "@antv/event-emitter" "@antv/matrix-util"
-  "echarts-for-react" "timeago.js" "size-sensor" "canvas-nest.js" "g2plot"
+  # TanStack router/start ecosystem — 42 packages, GHSA-g7cv-rxg3-hmpx
+  "@tanstack/arktype-adapter"          "@tanstack/eslint-plugin-router"
+  "@tanstack/eslint-plugin-start"      "@tanstack/history"
+  "@tanstack/nitro-v2-vite-plugin"     "@tanstack/react-router"
+  "@tanstack/react-router-devtools"    "@tanstack/react-router-ssr-query"
+  "@tanstack/react-start"              "@tanstack/react-start-client"
+  "@tanstack/react-start-rsc"          "@tanstack/react-start-server"
+  "@tanstack/router-cli"               "@tanstack/router-core"
+  "@tanstack/router-devtools"          "@tanstack/router-devtools-core"
+  "@tanstack/router-generator"         "@tanstack/router-plugin"
+  "@tanstack/router-ssr-query-core"    "@tanstack/router-utils"
+  "@tanstack/router-vite-plugin"       "@tanstack/solid-router"
+  "@tanstack/solid-router-devtools"    "@tanstack/solid-router-ssr-query"
+  "@tanstack/solid-start"              "@tanstack/solid-start-client"
+  "@tanstack/solid-start-server"       "@tanstack/start-client-core"
+  "@tanstack/start-fn-stubs"           "@tanstack/start-plugin-core"
+  "@tanstack/start-server-core"        "@tanstack/start-static-server-functions"
+  "@tanstack/start-storage-context"    "@tanstack/valibot-adapter"
+  "@tanstack/virtual-file-routes"      "@tanstack/vue-router"
+  "@tanstack/vue-router-devtools"      "@tanstack/vue-router-ssr-query"
+  "@tanstack/vue-start"                "@tanstack/vue-start-client"
+  "@tanstack/vue-start-server"         "@tanstack/zod-adapter"
+  # Mistral AI — npm packages + PyPI
+  "@mistralai/mistralai"               "@mistralai/mistralai-azure"
+  "@mistralai/mistralai-gcp"
+  "mistralai"           # PyPI: pip install mistralai==2.4.6 is affected
+  # OpenSearch
+  "@opensearch-project/opensearch"
+  # UiPath platform / AI tooling
+  "@uipath/access-policy-sdk"          "@uipath/access-policy-tool"
+  "@uipath/admin-tool"                 "@uipath/agent-sdk"
+  "@uipath/agent-tool"                 "@uipath/agent.sdk"
+  "@uipath/aops-policy-tool"           "@uipath/ap-chat"
+  "@uipath/api-workflow-tool"          "@uipath/apollo-core"
+  "@uipath/apollo-react"               "@uipath/apollo-wind"
+  "@uipath/auth"                       "@uipath/case-tool"
+  "@uipath/cli"                        "@uipath/codedagent-tool"
+  "@uipath/codedagents-tool"           "@uipath/codedapp-tool"
+  "@uipath/common"                     "@uipath/context-grounding-tool"
+  "@uipath/data-fabric-tool"           "@uipath/docsai-tool"
+  "@uipath/filesystem"                 "@uipath/flow-tool"
+  "@uipath/functions-tool"             "@uipath/gov-tool"
+  "@uipath/identity-tool"              "@uipath/insights-sdk"
+  "@uipath/insights-tool"              "@uipath/integrationservice-sdk"
+  "@uipath/integrationservice-tool"    "@uipath/llmgw-tool"
+  "@uipath/maestro-sdk"                "@uipath/maestro-tool"
+  "@uipath/orchestrator-tool"          "@uipath/packager-tool-apiworkflow"
+  "@uipath/packager-tool-bpmn"         "@uipath/packager-tool-case"
+  "@uipath/packager-tool-connector"    "@uipath/packager-tool-flow"
+  "@uipath/packager-tool-functions"    "@uipath/packager-tool-webapp"
+  "@uipath/packager-tool-workflowcompiler"
+  "@uipath/packager-tool-workflowcompiler-browser"
+  "@uipath/platform-tool"              "@uipath/project-packager"
+  "@uipath/resource-tool"              "@uipath/resourcecatalog-tool"
+  "@uipath/resources-tool"             "@uipath/robot"
+  "@uipath/rpa-legacy-tool"            "@uipath/rpa-tool"
+  "@uipath/solution-packager"          "@uipath/solution-tool"
+  "@uipath/solutionpackager-sdk"       "@uipath/solutionpackager-tool-core"
+  "@uipath/tasks-tool"                 "@uipath/telemetry"
+  "@uipath/test-manager-tool"          "@uipath/tool-workflowcompiler"
+  "@uipath/traces-tool"                "@uipath/ui-widgets-multi-file-upload"
+  "@uipath/uipath-python-bridge"       "@uipath/vertical-solutions-tool"
+  "@uipath/vss"                        "@uipath/widget.sdk"
+  # DraftAuth / DraftLab auth stack
+  "@draftauth/client"  "@draftauth/core"
+  "@draftlab/auth"     "@draftlab/auth-router"  "@draftlab/db"
+  # CLI / SDK tools
+  "@taskflow-corp/cli"  "@tolka/cli"
+  "@supersurkhet/cli"   "@supersurkhet/sdk"
+  "@dirigible-ai/sdk"   "agentwork-cli"
+  # MCP (Model Context Protocol) servers
+  "cmux-agent-mcp"  "nextmove-mcp"  "@squawk/mcp"
+  # Git utilities
+  "git-git-git"  "git-branch-selector"
+  # Auth / backend
+  "@beproduct/nestjs-auth"  "safe-action"
+  # ML Toolkit (TypeScript)
+  "@ml-toolkit-ts/preprocessing"  "@ml-toolkit-ts/xgboost"  "ml-toolkit-ts"
+  # Squawk aviation platform
+  "@squawk/airport-data"       "@squawk/airports"        "@squawk/airspace"
+  "@squawk/airspace-data"      "@squawk/airway-data"     "@squawk/airways"
+  "@squawk/fix-data"           "@squawk/fixes"           "@squawk/flight-math"
+  "@squawk/flightplan"         "@squawk/geo"             "@squawk/icao-registry"
+  "@squawk/icao-registry-data" "@squawk/navaid-data"     "@squawk/navaids"
+  "@squawk/notams"             "@squawk/procedure-data"  "@squawk/procedures"
+  "@squawk/types"              "@squawk/units"           "@squawk/weather"
+  # TallyUI e-commerce platform
+  "@tallyui/components"           "@tallyui/connector-medusa"
+  "@tallyui/connector-shopify"    "@tallyui/connector-vendure"
+  "@tallyui/connector-woocommerce" "@tallyui/core"
+  "@tallyui/database"             "@tallyui/pos"
+  "@tallyui/storage-sqlite"       "@tallyui/theme"
+  # MesaDev
+  "@mesadev/rest"  "@mesadev/saguaro"  "@mesadev/sdk"
+  # Miscellaneous npm
+  "wot-api"  "cross-stitch"  "ts-dna"
+  # PyPI
+  "guardrails-ai"   # PyPI: pip install guardrails-ai==0.10.1 is affected
+  # Worm attack-vector marker — fictitious package; any lockfile hit = compromise
+  "@tanstack/setup"
 )
 
 # ── BANNER ────────────────────────────────────────────────────────────────────
@@ -120,7 +214,7 @@ ${BOLD}COMMANDS${NC}
   ${CYAN}all${NC}          Full triage: machine + deps (default interactive choice)
   ${CYAN}machine${NC}      Machine scan: IOCs, secrets, shell history, git history
   ${CYAN}deps${NC}         Dependency audit: npm, pnpm, yarn, pip, cargo, go, composer, nuget
-  ${CYAN}ide${NC}          VS Code extension audit checklist
+  ${CYAN}ide${NC}          IDE audit: VS Code, JetBrains, Sublime Text, Vim/Neovim, Eclipse, Atom
   ${CYAN}platform${NC}     ADO / GitHub audit guidance (interactive checklist)
   ${CYAN}harden${NC}       Print hardening configs (.npmrc, pnpm, pipeline snippets)
 
@@ -274,7 +368,7 @@ cmd_machine() {
   local module_start_findings=$TOTAL_FINDINGS
 
   # 1. Network connections
-  SUBHEAD "1/6  Network connections"
+  SUBHEAD "1/7  Network connections"
   for ioc in "${ALL_IOCS[@]}"; do
     if ss -tunp 2>/dev/null | grep -iq "$ioc" || netstat -tunp 2>/dev/null | grep -iq "$ioc"; then
       CRIT "ACTIVE CONNECTION: $ioc"
@@ -284,7 +378,7 @@ cmd_machine() {
   done
 
   # 2. DNS / hosts
-  SUBHEAD "2/6  /etc/hosts and DNS"
+  SUBHEAD "2/7  /etc/hosts and DNS"
   local suspicious
   suspicious=$(grep -vEi "^#|^127|^::1|^$|^0\.0\.0\.0|^ff" /etc/hosts 2>/dev/null || true)
   if [[ -n "$suspicious" ]]; then
@@ -300,7 +394,7 @@ cmd_machine() {
   done
 
   # 3. Shell history
-  SUBHEAD "3/6  Shell history"
+  SUBHEAD "3/7  Shell history"
   for f in ~/.bash_history ~/.zsh_history ~/.history ~/.local/share/fish/fish_history; do
     [[ -f "$f" ]] || continue
     local hits
@@ -314,7 +408,7 @@ cmd_machine() {
   done
 
   # 4. Environment + credential files
-  SUBHEAD "4/6  Environment variables and credential files"
+  SUBHEAD "4/7  Environment variables and credential files"
   local env_hits
   env_hits=$(env 2>/dev/null | grep -iE -- "$SECRET_PATTERN" | redact || true)
   if [[ -n "$env_hits" ]]; then
@@ -345,7 +439,7 @@ cmd_machine() {
   done
 
   # 5. Git history secret scan
-  SUBHEAD "5/6  Git history secret scan"
+  SUBHEAD "5/7  Git history secret scan"
   local scan_dirs=("${SCAN_DIRS[@]}")
   [[ ${#scan_dirs[@]} -eq 0 ]] && scan_dirs=(".")
   local found_git_repo=0
@@ -411,7 +505,7 @@ cmd_machine() {
   fi
 
   # 6. Processes + cron
-  SUBHEAD "6/6  Processes and scheduled tasks"
+  SUBHEAD "6/7  Processes and scheduled tasks"
   local proc_hits
   proc_hits=$(ps aux 2>/dev/null | grep -iE -- "$IOC_PATTERN" | grep -v grep || true)
   if [[ -n "$proc_hits" ]]; then
@@ -427,6 +521,112 @@ cmd_machine() {
     echo "$cron"
   else
     OK "No user crontab"
+  fi
+
+  # 7. Malware artifact scan
+  SUBHEAD "7/7  Malware artifact scan"
+  local artifact_hits=0
+  # Check for known malicious payload files anywhere under scan dirs and home
+  for afile in router_init.js tanstack_runner.js; do
+    local found_paths
+    found_paths=$(find "${HOME}" "${SCAN_DIRS[@]}" -name "$afile" -not -path "*/node_modules/.cache/*" 2>/dev/null | head -5 || true)
+    if [[ -n "$found_paths" ]]; then
+      CRIT "Malicious payload file found: $afile"
+      echo "$found_paths"
+      artifact_hits=$((artifact_hits+1))
+    fi
+  done
+
+  # Check for worm persistence files dropped by compromised install scripts
+  local _persist_files=(
+    "${HOME}/.claude/router_runtime.js"
+    "${HOME}/.claude/setup.mjs"
+    "${HOME}/.vscode/setup.mjs"
+    "${HOME}/.local/bin/gh-token-monitor.sh"
+  )
+  for _pf in "${_persist_files[@]}"; do
+    if [[ -f "$_pf" ]]; then
+      CRIT "Worm persistence file found: $_pf"
+      artifact_hits=$((artifact_hits+1))
+    fi
+  done
+
+  # Check per-repo Claude Code and VS Code injection (settings files modified by worm)
+  for scan_dir in "${SCAN_DIRS[@]}"; do
+    for _injected in "${scan_dir}/.claude/router_runtime.js" \
+                     "${scan_dir}/.claude/setup.mjs" \
+                     "${scan_dir}/.vscode/setup.mjs"; do
+      if [[ -f "$_injected" ]]; then
+        CRIT "Worm persistence file found: $_injected"
+        artifact_hits=$((artifact_hits+1))
+      fi
+    done
+  done
+
+  # Check for gh-token-monitor systemd service (Linux persistence)
+  local _systemd_svc="${HOME}/.config/systemd/user/gh-token-monitor.service"
+  if [[ -f "$_systemd_svc" ]]; then
+    CRIT "Worm systemd persistence unit found: $_systemd_svc — disable and remove"
+    artifact_hits=$((artifact_hits+1))
+  fi
+  if systemctl --user is-active gh-token-monitor &>/dev/null 2>&1; then
+    CRIT "Worm service gh-token-monitor is ACTIVE — stop and disable immediately"
+    artifact_hits=$((artifact_hits+1))
+  fi
+
+  # Check for gh-token-monitor LaunchAgent (macOS persistence)
+  local _plist="${HOME}/Library/LaunchAgents/com.user.gh-token-monitor.plist"
+  if [[ -f "$_plist" ]]; then
+    CRIT "Worm LaunchAgent found: $_plist — unload and remove"
+    artifact_hits=$((artifact_hits+1))
+  fi
+
+  # Check for gh-token-monitor config directory
+  if [[ -d "${HOME}/.config/gh-token-monitor" ]]; then
+    CRIT "Worm config directory found: ${HOME}/.config/gh-token-monitor"
+    artifact_hits=$((artifact_hits+1))
+  fi
+
+  # Check package.json files for @tanstack/setup in optionalDependencies (attack vector marker)
+  for scan_dir in "${SCAN_DIRS[@]}"; do
+    local _pkgjson="${scan_dir}/package.json"
+    if [[ -f "$_pkgjson" ]]; then
+      if python3 -c "
+import json, sys
+try:
+  d = json.load(open(sys.argv[1]))
+  od = d.get('optionalDependencies', {})
+  if any('@tanstack/setup' in str(k) for k in od):
+    sys.exit(0)
+  sys.exit(1)
+except: sys.exit(1)
+" "$_pkgjson" 2>/dev/null; then
+        CRIT "@tanstack/setup in optionalDependencies of $_pkgjson — this is the worm attack-vector marker"
+        artifact_hits=$((artifact_hits+1))
+      fi
+    fi
+  done
+
+  # Check for suspicious npm token (ransom threat marker)
+  local ransom_token
+  ransom_token=$(grep -r "IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner" "${HOME}/.npmrc" ~/.config/npm/ 2>/dev/null || true)
+  if [[ -n "$ransom_token" ]]; then
+    CRIT "RANSOMWARE npm token marker found — DO NOT REVOKE without isolating machine first"
+  fi
+  # Check for injected Claude Code hooks
+  if [[ -f "${HOME}/.claude/hooks.json" || -d "${HOME}/.claude/hooks" ]]; then
+    INFO "Claude Code hooks present — verify these are expected: ${HOME}/.claude/hooks*"
+  fi
+  # Check for injected GH Actions workflow
+  for scan_dir in "${SCAN_DIRS[@]}"; do
+    local codeql_path="${scan_dir}/.github/workflows/codeql_analysis.yml"
+    if [[ -f "$codeql_path" ]]; then
+      WARN "Suspicious injected workflow: $codeql_path — verify this was intentionally added"
+    fi
+  done
+  if [[ $artifact_hits -eq 0 ]]; then
+    OK "No known malware artifact files found"
+    INFO "Known SHA-256: router_init.js=ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c  tanstack_runner.js=2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96"
   fi
 
   local delta=$((TOTAL_FINDINGS - module_start_findings))
@@ -893,6 +1093,7 @@ cmd_platform() {
   _say "  [ ]  ${RED}[HIGH]${NC}     Service Connections — verify no post-April-29 additions"
   _say "  [ ]  ${RED}[HIGH]${NC}     Variable Groups — rotate any modified post-April-29"
   _say "  [ ]  ${AMBER}[MED]${NC}      Pipeline run history May 10-20 — flag anomalies"
+  _say "  [ ]  ${RED}[HIGH]${NC}     Search pipeline run logs (May 10-20) for outbound HTTPS to getsession.org or git-tanstack.com"
 
   _say "\n${BOLD}GitHub${NC}"
   _say "  [ ]  ${BRED}[CRITICAL]${NC}  Security Log — filter oauth_access, PAT creation May 10-20"
@@ -901,6 +1102,11 @@ cmd_platform() {
   _say "  [ ]  ${RED}[HIGH]${NC}     Authorized OAuth Apps — revoke write:packages or repo scope apps"
   _say "  [ ]  ${RED}[HIGH]${NC}     Org Audit log → filter fork, pull_request → look for 'zblgg'"
   _say "  [ ]  ${RED}[HIGH]${NC}     Actions secrets → rotate all regardless of triage result"
+  _say "  [ ]  ${RED}[HIGH]${NC}     Search commits/PRs for author 'voicproducoes' or email 'voicproducoes@gmail.com'"
+  _say "  [ ]  ${RED}[HIGH]${NC}     Search commits for author 'claude@users.noreply.github.com' (malware self-commit marker)"
+  _say "  [ ]  ${RED}[HIGH]${NC}     Check for branches matching 'dependabot/github_actions/format/*' (attacker branch pattern)"
+  _say "  [ ]  ${RED}[HIGH]${NC}     Audit .github/workflows/ for injected 'codeql_analysis.yml' added after May 10"
+  _say "  [ ]  ${BRED}[CRITICAL]${NC}  WARNING: Do NOT revoke npm tokens before isolating affected machine — payload contains destructive wipe triggered by revocation"
   MODULE_RESULTS["platform"]="CHECKLIST"
 }
 
@@ -958,7 +1164,10 @@ INSTALL
 
   _say "\n${BOLD}5. IOC DNS block${NC}"
   _say "${DIM}───────────────────────────────${NC}"
-  _say "  Block at firewall/DNS: zero.masscan.cloud | 94.154.172.43"
+  _say "  Block at firewall/DNS:"
+  _say "    zero.masscan.cloud | api.masscan.cloud | 94.154.172.43"
+  _say "    filev2.getsession.org | seed1.getsession.org | seed2.getsession.org | seed3.getsession.org"
+  _say "    git-tanstack.com | litter.catbox.moe"
   MODULE_RESULTS["harden"]="DONE"
 }
 
@@ -1011,7 +1220,7 @@ show_menu() {
     _say "  ${CYAN}[1]${NC}  Full Triage      — machine scan + dependency audit"
     _say "  ${CYAN}[2]${NC}  Machine Scan     — IOCs, secrets, shell history, git history"
     _say "  ${CYAN}[3]${NC}  Dependency Audit — npm, pnpm, yarn, pip, cargo, go, composer, nuget"
-    _say "  ${CYAN}[4]${NC}  IDE Audit        — VS Code extension checklist"
+    _say "  ${CYAN}[4]${NC}  IDE Audit        — VS Code, JetBrains, Sublime, Vim/Neovim, Eclipse, Atom"
     _say "  ${CYAN}[5]${NC}  Platform Checklist — ADO / GitHub audit guidance"
     _say "  ${CYAN}[6]${NC}  Hardening        — print .npmrc, pnpm, pipeline configs"
     _say ""

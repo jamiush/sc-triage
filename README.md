@@ -1,4 +1,4 @@
-# Supply Chain Triage CLI (SCT) v2.0.0
+# Supply Chain Triage CLI (SCT) v2.1.0
 
 **Mini Shai-Hulud Edition · TeamPCP · CVE-2026-45321**
 
@@ -10,11 +10,13 @@ A self-contained incident-response tool for quickly triaging developer machines 
 
 In May 2026, threat actors compromised several open-source package maintainer accounts (CVE-2026-45321 / "Mini Shai-Hulud"). The campaign involved:
 
-- **Malicious npm packages** injected into widely-used libraries (@tanstack, @antv, and others), phoning home to `masscan.cloud` / `94.154.172.43`.
+- **Malicious npm packages** injected into widely-used libraries (@tanstack router/start, @mistralai, @uipath, @opensearch-project, and many others), phoning home to `masscan.cloud`, `getsession.org`, `git-tanstack.com`, and `litter.catbox.moe`.
+- **Self-propagating worm** — compromised install scripts drop persistence files (`router_runtime.js`, `setup.mjs`, `gh-token-monitor.sh/service`) and inject malicious Claude Code hooks and VS Code settings.
 - **IDE extension tampering** — VS Code extensions modified between May 10–20 to exfiltrate credentials and tokens.
-- **GitHub OAuth abuse** — attacker apps used to clone private repositories via stolen PATs.
+- **GitHub OAuth abuse** — attacker apps used to clone private repositories via stolen PATs. Commits self-authored as `voicproducoes` or `claude@users.noreply.github.com`; attacker injects `codeql_analysis.yml` into `.github/workflows/`.
+- **Ransomware token threat** — the payload drops an npm token with the string `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner` in `.npmrc`. Do **not** revoke this token without isolating the machine first.
 
-SCT automates the six checks every affected engineer and IR responder should run on their machine.
+SCT automates the triage checks every affected engineer and IR responder should run on their machine.
 
 ---
 
@@ -151,7 +153,7 @@ Runs **Machine Scan** followed by **Dependency Audit** in one pass. This is the 
 
 ### Module 2 — Machine Scan
 
-Six sequential checks for active compromise indicators on the local machine.
+Seven sequential checks on Linux/macOS, eight on Windows, for active compromise indicators on the local machine.
 
 #### 2/1 · Network connections
 Checks live TCP/UDP connections (`ss`/`netstat`) for any socket connected to a known-bad IP or hostname. An active connection is a **CRIT** — the machine should be isolated immediately.
@@ -194,11 +196,26 @@ Checks running processes for IOC strings in process name or command line. Also r
 
 **Value:** Detects persistence mechanisms — a malicious process or scheduled task surviving reboots.
 
+#### 2/7 · Malware artifact scan (Linux/macOS) · 2/8 (Windows)
+Scans for known worm drop files and persistence mechanisms:
+
+- **Payload files** — `router_init.js` and `tanstack_runner.js` anywhere under `$HOME` and scan directories (excluding `.cache`). Known SHA-256s are printed for confirmation.
+- **Worm persistence files** — `~/.claude/router_runtime.js`, `~/.claude/setup.mjs`, `~/.vscode/setup.mjs`, `~/.local/bin/gh-token-monitor.sh`, and per-repo equivalents in `.claude/` and `.vscode/`.
+- **Linux systemd persistence** — `~/.config/systemd/user/gh-token-monitor.service` and checks whether the service is currently active.
+- **macOS LaunchAgent** — `~/Library/LaunchAgents/com.user.gh-token-monitor.plist`.
+- **Worm config directory** — `~/.config/gh-token-monitor/`.
+- **Attack-vector marker** — `@tanstack/setup` in `optionalDependencies` of any `package.json` in the scan path.
+- **Ransomware token** — greps `.npmrc` for `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner`; alerts to isolate before revoking.
+- **Claude Code hooks** — warns if `~/.claude/hooks.json` or `~/.claude/hooks/` exists for manual verification.
+- **Injected GitHub Actions workflow** — flags `codeql_analysis.yml` in `.github/workflows/` of any scanned repo.
+
+**Value:** Directly detects the worm's known drop set, persistence mechanisms, and ransom markers — these are definitive compromise indicators requiring immediate isolation.
+
 ---
 
 ### Module 3 — Dependency Audit
 
-Scans every configured project directory for the 35 packages known to have been compromised in the Mini Shai-Hulud campaign across eight ecosystems:
+Scans every configured project directory for the ~170 packages known to have been compromised in the Mini Shai-Hulud campaign across eight ecosystems:
 
 | Ecosystem | File checked |
 |---|---|
@@ -235,8 +252,9 @@ A universal checklist is printed at the end with manual steps for any IDE not au
 
 Prints a prioritised, actionable checklist for auditing the DevOps platforms your team uses:
 
-- **Azure DevOps:** Org Audit Log (filter April 29 — today), PAT revocation, Service Connection review, Variable Group rotation, pipeline run history.
-- **GitHub:** Security Log review (OAuth events, PAT creation), PAT revocation (classic + fine-grained), Authorized OAuth App audit, Org Audit Log fork/PR filter, Actions secrets rotation.
+- **Azure DevOps:** Org Audit Log (filter April 29 — today), PAT revocation, Service Connection review, Variable Group rotation, pipeline run history (May 10–20), outbound HTTPS to `getsession.org` or `git-tanstack.com` in pipeline logs.
+- **GitHub:** Security Log review (OAuth events, PAT creation), PAT revocation (classic + fine-grained), Authorized OAuth App audit, Org Audit Log fork/PR filter, Actions secrets rotation. Also: search commits and PRs for author `voicproducoes` or `claude@users.noreply.github.com`; check for branches matching `dependabot/github_actions/format/*`; audit `.github/workflows/` for `codeql_analysis.yml` added after May 10.
+- **Critical:** Do **not** revoke npm tokens before isolating the affected machine — the payload contains a destructive wipe triggered by token revocation.
 
 Items are severity-tagged (CRITICAL / HIGH / MED). These steps cannot be automated — they require human review of audit logs.
 
@@ -252,7 +270,7 @@ Prints hardening configurations to copy into your projects and pipelines:
 2. **`package.json` pnpm block** — `onlyBuiltDependencies`, `minimumReleaseAge`, `blockExoticSubdeps`.
 3. **GitHub Actions SHA pinning** — before/after example and tooling reference (`pin-github-action`). Prevents tag-mutation attacks against CI actions.
 4. **Pipeline install commands** — `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`, `pip install --no-deps`.
-5. **DNS/firewall blocklist** — IOC domains and IPs to block at the network layer.
+5. **DNS/firewall blocklist** — IOC domains and IPs to block at the network layer: `zero.masscan.cloud`, `api.masscan.cloud`, `94.154.172.43`, `filev2.getsession.org`, `seed1–3.getsession.org`, `git-tanstack.com`, `litter.catbox.moe`.
 
 **Value:** Applies defence-in-depth so that even if a future package is compromised, postinstall scripts cannot exfiltrate data or make outbound connections.
 
@@ -290,6 +308,11 @@ At the end of each run a summary block shows:
 | IOC in git commit message | finding |
 | Compromised package in lockfile | finding |
 | IDE extension modified in attack window | finding |
+| Worm persistence file found (`router_runtime.js`, `setup.mjs`, etc.) | CRIT / finding |
+| Ransomware npm token marker in `.npmrc` | CRIT / finding |
+| `@tanstack/setup` in `optionalDependencies` | CRIT / finding |
+| Injected `codeql_analysis.yml` in `.github/workflows/` | finding |
+| Claude Code hooks present | informational only |
 | IOC DNS resolves (domain is real) | informational only |
 | Non-standard hosts entries | informational only |
 | Scheduled tasks outside Microsoft namespace | informational only |
