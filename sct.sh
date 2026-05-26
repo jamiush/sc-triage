@@ -231,7 +231,17 @@ collect_params() {
 # ── COMBINED PATTERNS ─────────────────────────────────────────────────────────
 build_patterns() {
   ALL_IOCS=("${DEFAULT_IOCS[@]}" "${EXTRA_IOCS[@]}")
-  ALL_PATTERNS=("${DEFAULT_SECRET_PATTERNS[@]}" "${EXTRA_SECRET_PATTERNS[@]}")
+  ALL_PATTERNS=("${DEFAULT_SECRET_PATTERNS[@]}")
+  # Validate user-supplied secret patterns: skip (do not fail) any pattern grep -E cannot parse
+  if [[ ${#EXTRA_SECRET_PATTERNS[@]} -gt 0 ]]; then
+    for pat in "${EXTRA_SECRET_PATTERNS[@]}"; do
+      if echo "" | grep -qE "$pat" 2>/dev/null || echo "test" | grep -qE "$pat" 2>/dev/null; then
+        ALL_PATTERNS+=("$pat")
+      else
+        WARN "Skipping invalid secret pattern (grep -E error): $pat"
+      fi
+    done
+  fi
   ALL_PKGS=("${DEFAULT_PKGS[@]}" "${EXTRA_PKGS[@]}")
   IOC_PATTERN=$(printf '%s|' "${ALL_IOCS[@]}" | sed 's/\./\\./g; s/|$//')
   SECRET_PATTERN=$(printf '%s|' "${ALL_PATTERNS[@]}" | sed 's/|$//')
@@ -246,6 +256,12 @@ expand_path() {
   else
     printf '%s' "$path"
   fi
+}
+
+# Cross-platform realpath replacement (BSD/macOS lacks GNU realpath unless coreutils installed)
+_realpath() {
+  python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1" 2>/dev/null \
+    || { local p; p="$(expand_path "$1")"; ( cd "$p" 2>/dev/null && pwd ) || echo "$p"; }
 }
 
 # ── MODULE: MACHINE SCAN ─────────────────────────────────────────────────────
@@ -271,7 +287,12 @@ cmd_machine() {
   SUBHEAD "2/6  /etc/hosts and DNS"
   local suspicious
   suspicious=$(grep -vEi "^#|^127|^::1|^$|^0\.0\.0\.0|^ff" /etc/hosts 2>/dev/null || true)
-  [[ -n "$suspicious" ]] && INFO "/etc/hosts non-standard entries:" && echo "$suspicious" || OK "/etc/hosts clean"
+  if [[ -n "$suspicious" ]]; then
+    INFO "/etc/hosts non-standard entries:"
+    echo "$suspicious"
+  else
+    OK "/etc/hosts clean"
+  fi
   for ioc in "${ALL_IOCS[@]}"; do
     local resolve
     resolve=$(getent hosts "$ioc" 2>/dev/null || dig +short "$ioc" 2>/dev/null | head -1 || true)
@@ -284,16 +305,24 @@ cmd_machine() {
     [[ -f "$f" ]] || continue
     local hits
     hits=$(grep -iE -- "$IOC_PATTERN" "$f" 2>/dev/null | head -5 || true)
-    [[ -n "$hits" ]] && WARN "IOC in $f:" && echo "$hits" | head -5 || OK "$f clean"
+    if [[ -n "$hits" ]]; then
+      WARN "IOC in $f:"
+      echo "$hits" | head -5
+    else
+      OK "$f clean"
+    fi
   done
 
   # 4. Environment + credential files
   SUBHEAD "4/6  Environment variables and credential files"
   local env_hits
   env_hits=$(env 2>/dev/null | grep -iE -- "$SECRET_PATTERN" | redact || true)
-  [[ -n "$env_hits" ]] \
-    && INFO "Secret patterns in environment (redacted):" && echo "$env_hits" | head -10 \
-    || OK "No secret patterns in environment"
+  if [[ -n "$env_hits" ]]; then
+    INFO "Secret patterns in environment (redacted):"
+    echo "$env_hits" | head -10
+  else
+    OK "No secret patterns in environment"
+  fi
 
   local cred_files=(
     ~/.env ~/.env.local ~/.env.development ~/.env.production ~/.env.staging
@@ -309,7 +338,10 @@ cmd_machine() {
     [[ -f "$f" ]] || continue
     local hits
     hits=$(grep -iE -- "$SECRET_PATTERN" "$f" 2>/dev/null | redact | head -3 || true)
-    [[ -n "$hits" ]] && WARN "Secret in $f (redacted):" && echo "$hits"
+    if [[ -n "$hits" ]]; then
+      WARN "Secret in $f (redacted):"
+      echo "$hits"
+    fi
   done
 
   # 5. Git history secret scan
@@ -325,10 +357,9 @@ cmd_machine() {
       continue
     fi
 
-    local prev_pwd="$PWD"
-    cd "$scan_dir" || continue
+    pushd "$scan_dir" > /dev/null || { INFO "Cannot cd to $scan_dir, skipping"; continue; }
 
-    if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+    if git rev-parse --is-inside-work-tree &>/dev/null; then
       found_git_repo=1
       local repo
       repo=$(git rev-parse --show-toplevel)
@@ -338,9 +369,12 @@ cmd_machine() {
       git_hits=$(git log --all --since="2026-04-01" -p --diff-filter=AMR 2>/dev/null \
         | grep -E "^\+" | grep -v "^\+\+\+" \
         | grep -iE -- "$SECRET_PATTERN" | redact | sort -u | head -20 || true)
-      [[ -n "$git_hits" ]] \
-        && WARN "Secrets in recent git history (redacted):" && echo "$git_hits" \
-        || OK "No secret patterns in post-April-2026 git history"
+      if [[ -n "$git_hits" ]]; then
+        WARN "Secrets in recent git history (redacted):"
+        echo "$git_hits"
+      else
+        OK "No secret patterns in post-April-2026 git history"
+      fi
 
       _say "  ${DIM}Checking full history for private key material...${NC}"
       _say "  ${DIM}▶ git log --all -p --diff-filter=AMR | grep BEGIN.*KEY${NC}"
@@ -369,7 +403,7 @@ cmd_machine() {
       SKIP "Not inside a git repository: $scan_dir"
     fi
 
-    cd "$prev_pwd"
+    popd > /dev/null
   done
 
   if [[ $found_git_repo -eq 0 ]]; then
@@ -380,10 +414,20 @@ cmd_machine() {
   SUBHEAD "6/6  Processes and scheduled tasks"
   local proc_hits
   proc_hits=$(ps aux 2>/dev/null | grep -iE -- "$IOC_PATTERN" | grep -v grep || true)
-  [[ -n "$proc_hits" ]] && WARN "Suspicious processes:" && echo "$proc_hits" || OK "No suspicious processes"
+  if [[ -n "$proc_hits" ]]; then
+    WARN "Suspicious processes:"
+    echo "$proc_hits"
+  else
+    OK "No suspicious processes"
+  fi
   local cron
   cron=$(crontab -l 2>/dev/null | grep -vE "^#|^$" || true)
-  [[ -n "$cron" ]] && INFO "Crontab (verify these are expected):" && echo "$cron" || OK "No user crontab"
+  if [[ -n "$cron" ]]; then
+    INFO "Crontab (verify these are expected):"
+    echo "$cron"
+  else
+    OK "No user crontab"
+  fi
 
   local delta=$((TOTAL_FINDINGS - module_start_findings))
   MODULE_RESULTS["machine"]=$([[ $delta -eq 0 ]] && echo "CLEAN" || echo "FINDINGS:$delta")
@@ -397,14 +441,14 @@ cmd_deps() {
   local -a ws_extra=()
   local _rd _rws _dup _chk _rc _ws _lf _d
   for _d in "${dirs[@]}"; do
-    _rd=$(realpath "$(expand_path "$_d")" 2>/dev/null || expand_path "$_d")
+    _rd=$(_realpath "$(expand_path "$_d")")
     [[ -d "$_rd" ]] || continue
     while IFS= read -r _ws; do
       [[ -z "$_ws" ]] && continue
-      _rws=$(realpath "$_ws" 2>/dev/null || echo "$_ws")
+      _rws=$(_realpath "$_ws")
       _dup=0
       for _chk in "${dirs[@]}" "${ws_extra[@]+"${ws_extra[@]}"}"; do
-        _rc=$(realpath "$(expand_path "$_chk")" 2>/dev/null || expand_path "$_chk")
+        _rc=$(_realpath "$(expand_path "$_chk")")
         [[ "$_rws" == "$_rc" ]] && _dup=1 && break
       done
       [[ $_dup -eq 0 ]] && ws_extra+=("$_ws")
@@ -419,18 +463,21 @@ cmd_deps() {
   [[ ${#ws_extra[@]} -gt 0 ]] && SUBHEAD "Monorepo: ${#ws_extra[@]} workspace package(s) auto-discovered"
   local module_start_findings=$TOTAL_FINDINGS
 
+  # Per-directory finding helpers (defined once; WARN already increments TOTAL_FINDINGS)
+  local dir_findings=0
+  _flag_pkg() { WARN "$1 @ $2 in $3"; dir_findings=$((dir_findings+1)); }
+  _clean_eco() { OK "$1: no flagged packages"; }
+  _skip_eco()  { SKIP "$1: no lockfile — run install first"; }
+
   for scan_dir in "${dirs[@]}"; do
     scan_dir=$(expand_path "$scan_dir")
     if [[ ! -d "$scan_dir" ]]; then INFO "Directory not found: $scan_dir (skipping)"; continue; fi
     local abs_dir
-    abs_dir=$(realpath "$scan_dir")
+    abs_dir=$(_realpath "$scan_dir")
     SUBHEAD "Scanning: $abs_dir"
     pushd "$abs_dir" > /dev/null
 
-    local dir_findings=0
-_flag_pkg() { WARN "$1 @ $2 in $3"; dir_findings=$((dir_findings+1)); TOTAL_FINDINGS=$((TOTAL_FINDINGS+1)); }
-_clean_eco() { OK "$1: no flagged packages"; }
-_skip_eco()  { SKIP "$1: no lockfile — run install first"; }
+    dir_findings=0
 
     # npm
     if [[ -f "package-lock.json" ]]; then
@@ -563,7 +610,7 @@ except:pass
     # NuGet
     local nuget_present=0
     [[ -f "packages.lock.json" ]] && nuget_present=1
-    ls *.csproj 2>/dev/null | head -1 | grep -q "." && nuget_present=1 || true
+    compgen -G "*.csproj" > /dev/null 2>&1 && nuget_present=1 || true
     if [[ $nuget_present -eq 1 ]]; then
       _say "  ${DIM}Checking NuGet...${NC}"
       local nuget_f=0

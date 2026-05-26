@@ -200,6 +200,10 @@ function Collect-Params {
                 $script:ScanDirs += $vNext
                 $vNext = Read-Host '  Another directory (or Enter to stop)'
             }
+        } else {
+            # Guard: ensure ScanDirs is initialised even if user skipped, otherwise it
+            # could carry over from a previous Collect-Params invocation in the menu.
+            if ($script:ScanDirs.Count -eq 0) { $script:ScanDirs = @('.') }
         }
     }
 
@@ -484,19 +488,19 @@ function Invoke-DepsScan {
     $seenAbsDirs = @()
     foreach ($d in $script:ScanDirs) {
         $r = Resolve-Path (ExpandPathLocal $d) -ErrorAction SilentlyContinue
-        $seenAbsDirs += if ($r) { $r.Path.TrimEnd('\') } else { (ExpandPathLocal $d).TrimEnd('\') }
+        $seenAbsDirs += if ($r) { $r.Path.TrimEnd('\','/') } else { (ExpandPathLocal $d).TrimEnd('\','/') }
     }
     foreach ($scanDir in $script:ScanDirs) {
         $expandedDir = ExpandPathLocal $scanDir
         if (-not (Test-Path $expandedDir -ErrorAction SilentlyContinue)) { continue }
         $resolved = Resolve-Path $expandedDir -ErrorAction SilentlyContinue
         $absDir = if ($resolved) { $resolved.Path } else { $expandedDir }
-        $absDir = $absDir.TrimEnd('\')
+        $absDir = $absDir.TrimEnd('\','/')
         $lockFiles = Get-ChildItem -Path $absDir -Recurse -Depth 4 -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -in @('package-lock.json','yarn.lock','pnpm-lock.yaml') -and
                            $_.FullName -notmatch '[/\\]node_modules[/\\]' }
         foreach ($lf in $lockFiles) {
-            $wsDir = $lf.DirectoryName.TrimEnd('\')
+            $wsDir = $lf.DirectoryName.TrimEnd('\','/')
             if ($wsDir -ne $absDir -and $seenAbsDirs -notcontains $wsDir -and $wsExtra -notcontains $wsDir) {
                 $wsExtra += $wsDir
                 $seenAbsDirs += $wsDir
@@ -552,7 +556,7 @@ function Invoke-DepsScan {
                     }
                     if ($found) {
                         WarnMsg ($pkg + ' ' + $ver + ' in package-lock.json')
-                        $npmF++; $dirFindings++; $script:TotalFindings++
+                        $npmF++; $dirFindings++
                     }
                 }
             } catch {
@@ -565,13 +569,13 @@ function Invoke-DepsScan {
         if (Test-Path 'pnpm-lock.yaml') {
             Write-Host '  Checking pnpm (pnpm-lock.yaml)...' -ForegroundColor DarkGray
             $pnpmF = 0
-            $pnpmContent = Get-Content 'pnpm-lock.yaml' -Raw
+            $pnpmContent = Get-Content 'pnpm-lock.yaml' -Raw -Encoding UTF8
             foreach ($pkg in $script:AllPkgs) {
                 $escaped = [regex]::Escape($pkg)
                 $pnpmPat = "'" + $escaped + "'|" + '"' + $escaped + '"|/' + $escaped + '@|\s+' + $escaped + '@'
                 if ($pnpmContent -imatch $pnpmPat) {
                     WarnMsg ($pkg + ' - see pnpm-lock.yaml')
-                    $pnpmF++; $dirFindings++; $script:TotalFindings++
+                    $pnpmF++; $dirFindings++
                 }
             }
             if ($pnpmF -eq 0) { OkMsg 'pnpm: no flagged packages' }
@@ -581,13 +585,13 @@ function Invoke-DepsScan {
         if (Test-Path 'yarn.lock') {
             Write-Host '  Checking yarn (yarn.lock)...' -ForegroundColor DarkGray
             $yarnF = 0
-            $yarnContent = Get-Content 'yarn.lock' -Raw
+            $yarnContent = Get-Content 'yarn.lock' -Raw -Encoding UTF8
             foreach ($pkg in $script:AllPkgs) {
                 $esc = [regex]::Escape($pkg)
                 $yarnPat = '^"?' + $esc + '@|^' + $esc + '@'
                 if ($yarnContent -imatch $yarnPat) {
                     WarnMsg ($pkg + ' - see yarn.lock')
-                    $yarnF++; $dirFindings++; $script:TotalFindings++
+                    $yarnF++; $dirFindings++
                 }
             }
             if ($yarnF -eq 0) { OkMsg 'yarn: no flagged packages' }
@@ -608,7 +612,7 @@ function Invoke-DepsScan {
                     $content = Get-Content $pf -Raw -ErrorAction SilentlyContinue
                     if ($content -imatch $pyPat -or $content -imatch $pyQuot) {
                         WarnMsg ($pyBase + ' - see ' + $pf)
-                        $pyF++; $dirFindings++; $script:TotalFindings++
+                        $pyF++; $dirFindings++
                         break
                     }
                 }
@@ -629,7 +633,7 @@ function Invoke-DepsScan {
                     $ver = '?'
                     if ($cargoContent -imatch $verPat) { $ver = $Matches[1] }
                     WarnMsg ($cp + ' ' + $ver + ' in Cargo.lock')
-                    $cargoF++; $dirFindings++; $script:TotalFindings++
+                    $cargoF++; $dirFindings++
                 }
             }
             if ($cargoF -eq 0) { OkMsg 'Cargo: no flagged packages' }
@@ -645,7 +649,7 @@ function Invoke-DepsScan {
                     $hits = Select-String -Path $gf -Pattern ([regex]::Escape($gp)) -SimpleMatch
                     if ($hits) {
                         WarnMsg ($gp + ' - see ' + $gf)
-                        $goF++; $dirFindings++; $script:TotalFindings++
+                        $goF++; $dirFindings++
                         break
                     }
                 }
@@ -666,7 +670,7 @@ function Invoke-DepsScan {
                     $m = $allComp | Where-Object { $_.name -ieq $cp } | Select-Object -First 1
                     if ($m) {
                         WarnMsg ($cp + ' ' + $m.version + ' in composer.lock')
-                        $compF++; $dirFindings++; $script:TotalFindings++
+                        $compF++; $dirFindings++
                     }
                 }
             } catch { InfoMsg ('Could not parse composer.lock: ' + $_) }
@@ -689,7 +693,7 @@ function Invoke-DepsScan {
                                 $ver = $m.Value.resolved
                                 if (-not $ver) { $ver = '?' }
                                 WarnMsg ($np + ' ' + $ver + ' in packages.lock.json')
-                                $nugetF++; $dirFindings++; $script:TotalFindings++
+                                $nugetF++; $dirFindings++
                                 break
                             }
                         }
@@ -698,7 +702,7 @@ function Invoke-DepsScan {
             }
             foreach ($proj in $csprojs) {
                 try {
-                    [xml]$xml = Get-Content $proj.FullName
+                    [xml]$xml = Get-Content $proj.FullName -Raw -Encoding UTF8
                     foreach ($pkg in $script:AllPkgs) {
                         $np = $pkg -replace '^@[^/]*/', ''
                         $ref = $xml.Project.ItemGroup.PackageReference |
@@ -707,7 +711,7 @@ function Invoke-DepsScan {
                             $ver = $ref.Version
                             if (-not $ver) { $ver = '?' }
                             WarnMsg ($np + ' ' + $ver + ' in ' + $proj.Name)
-                            $nugetF++; $dirFindings++; $script:TotalFindings++
+                            $nugetF++; $dirFindings++
                         }
                     }
                 } catch {}
@@ -1004,9 +1008,6 @@ function Print-Summary {
     HR
     Write-Host ''
 }
-
-# ---- PATH EXPANSION --------------------------------------------------------
-
 
 # ==== INTERACTIVE MENU =======================================================
 function Show-Menu {
