@@ -389,7 +389,9 @@ cmd_machine() {
   fi
   for ioc in "${ALL_IOCS[@]}"; do
     local resolve
-    resolve=$(getent hosts "$ioc" 2>/dev/null || dig +short "$ioc" 2>/dev/null | head -1 || true)
+    resolve=$(getent hosts "$ioc" 2>/dev/null \
+      || dig +short +time=2 +tries=1 "$ioc" 2>/dev/null | grep -v '^;;' | head -1 \
+      || true)
     [[ -n "$resolve" ]] && INFO "IOC resolves: $ioc => $resolve"
   done
 
@@ -527,12 +529,17 @@ cmd_machine() {
   SUBHEAD "7/7  Malware artifact scan"
   local artifact_hits=0
   # Check for known malicious payload files anywhere under scan dirs and home
+  local -A _known_sha=(
+    [router_init.js]="ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c"
+    [tanstack_runner.js]="2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96"
+  )
   for afile in router_init.js tanstack_runner.js; do
     local found_paths
     found_paths=$(find "${HOME}" "${SCAN_DIRS[@]}" -name "$afile" -not -path "*/node_modules/.cache/*" 2>/dev/null | head -5 || true)
     if [[ -n "$found_paths" ]]; then
       CRIT "Malicious payload file found: $afile"
       echo "$found_paths"
+      _say "  ${DIM}known SHA-256: ${_known_sha[$afile]}${NC}"
       artifact_hits=$((artifact_hits+1))
     fi
   done
@@ -626,7 +633,6 @@ except: sys.exit(1)
   done
   if [[ $artifact_hits -eq 0 ]]; then
     OK "No known malware artifact files found"
-    INFO "Known SHA-256: router_init.js=ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c  tanstack_runner.js=2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96"
   fi
 
   local delta=$((TOTAL_FINDINGS - module_start_findings))

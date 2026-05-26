@@ -334,8 +334,10 @@ function Invoke-MachineScan {
 
     foreach ($ioc in $script:AllIOCs) {
         try {
-            $r = [System.Net.Dns]::GetHostAddresses($ioc)
-            InfoMsg ('IOC resolves: ' + $ioc + ' => ' + ($r.IPAddressToString -join ','))
+            $task = [System.Net.Dns]::GetHostAddressesAsync($ioc)
+            if ($task.Wait(3000)) {
+                InfoMsg ('IOC resolves: ' + $ioc + ' => ' + ($task.Result.IPAddressToString -join ','))
+            }
         } catch {}
     }
 
@@ -571,6 +573,10 @@ function Invoke-MachineScan {
     # 8. Malware artifact scan
     SubHead '8/8  Malware artifact scan'
     $artifactHits = 0
+    $knownSha = @{
+        'router_init.js'    = 'ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c'
+        'tanstack_runner.js'= '2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96'
+    }
     $artifactRoots = @($env:USERPROFILE) + @($script:ScanDirs | ForEach-Object { ExpandPathLocal $_ } | Where-Object { Test-Path $_ })
     foreach ($afile in @('router_init.js','tanstack_runner.js')) {
         $foundPaths = @()
@@ -585,6 +591,7 @@ function Invoke-MachineScan {
         if ($foundPaths.Count -gt 0) {
             CritMsg ('Malicious payload file found: ' + $afile)
             $foundPaths | Select-Object -First 5 | ForEach-Object { Write-Host ('    ' + $_) }
+            Write-Host ('    known SHA-256: ' + $knownSha[$afile]) -ForegroundColor DarkGray
             $artifactHits++
         }
     }
@@ -670,7 +677,6 @@ function Invoke-MachineScan {
 
     if ($artifactHits -eq 0) {
         OkMsg 'No known malware artifact files found'
-        InfoMsg 'Known SHA-256: router_init.js=ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c  tanstack_runner.js=2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96'
     }
 
     $delta = $script:TotalFindings - $startFindings
