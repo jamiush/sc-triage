@@ -531,9 +531,13 @@ function Invoke-DepsScan {
         # --- npm ---
         if (Test-Path 'package-lock.json') {
             Write-Host '  Checking npm (package-lock.json)...' -ForegroundColor DarkGray
-            $npmF = 0
+            $npmF = 0; $npmOk = $false
             try {
-                $lock = Get-Content 'package-lock.json' -Raw | ConvertFrom-Json
+                # PS5.1 ConvertFrom-Json chokes on the empty-string root key ("": {...}) that
+                # npm v2/v3 lockfiles always include — replace it with a harmless placeholder
+                $raw = (Get-Content 'package-lock.json' -Raw -Encoding UTF8) -replace '""\s*:', '"__sct_root__":'
+                $lock = $raw | ConvertFrom-Json
+                $npmOk = $true
                 foreach ($pkg in $script:AllPkgs) {
                     $found = $false; $ver = '?'
                     # v2/v3: use PSObject.Properties.Item for safe dynamic-name access (avoids
@@ -562,7 +566,7 @@ function Invoke-DepsScan {
             } catch {
                 InfoMsg ('Could not parse package-lock.json: ' + $_.Exception.Message)
             }
-            if ($npmF -eq 0) { OkMsg 'npm: no flagged packages' }
+            if ($npmOk -and $npmF -eq 0) { OkMsg 'npm: no flagged packages' }
         }
 
         # --- pnpm ---
@@ -659,9 +663,10 @@ function Invoke-DepsScan {
 
         # --- Composer ---
         if (Test-Path 'composer.lock') {
-            $compF = 0
+            $compF = 0; $compOk = $false
             try {
                 $comp = Get-Content 'composer.lock' -Raw | ConvertFrom-Json
+                $compOk = $true
                 $allComp = @()
                 if ($comp.packages)       { $allComp += $comp.packages }
                 if ($comp.'packages-dev') { $allComp += $comp.'packages-dev' }
@@ -674,17 +679,18 @@ function Invoke-DepsScan {
                     }
                 }
             } catch { InfoMsg ('Could not parse composer.lock: ' + $_) }
-            if ($compF -eq 0) { OkMsg 'Composer: no flagged packages' }
+            if ($compOk -and $compF -eq 0) { OkMsg 'Composer: no flagged packages' }
         } elseif (Test-Path 'composer.json') { SkipMsg 'Composer: no composer.lock - run composer install' }
 
         # --- NuGet ---
         $csprojs  = Get-ChildItem -Filter '*.csproj'  -ErrorAction SilentlyContinue
         $hasPkgsLock = Test-Path 'packages.lock.json'
         if ($hasPkgsLock -or ($csprojs.Count -gt 0)) {
-            $nugetF = 0
+            $nugetF = 0; $nugetOk = $false
             if ($hasPkgsLock) {
                 try {
                     $nugetLock = Get-Content 'packages.lock.json' -Raw | ConvertFrom-Json
+                    $nugetOk = $true
                     foreach ($pkg in $script:AllPkgs) {
                         $np = $pkg -replace '^@[^/]*/', ''
                         foreach ($fw in $nugetLock.dependencies.PSObject.Properties) {
@@ -703,6 +709,7 @@ function Invoke-DepsScan {
             foreach ($proj in $csprojs) {
                 try {
                     [xml]$xml = Get-Content $proj.FullName -Raw -Encoding UTF8
+                    $nugetOk = $true
                     foreach ($pkg in $script:AllPkgs) {
                         $np = $pkg -replace '^@[^/]*/', ''
                         $ref = $xml.Project.ItemGroup.PackageReference |
@@ -714,9 +721,9 @@ function Invoke-DepsScan {
                             $nugetF++; $dirFindings++
                         }
                     }
-                } catch {}
+                } catch { InfoMsg ('Could not parse ' + $proj.Name + ': ' + $_.Exception.Message) }
             }
-            if ($nugetF -eq 0) { OkMsg 'NuGet: no flagged packages' }
+            if ($nugetOk -and $nugetF -eq 0) { OkMsg 'NuGet: no flagged packages' }
         } else { SkipMsg 'NuGet: no packages.lock.json or .csproj' }
 
         if ($dirFindings -eq 0) { OkMsg ('Directory clean: ' + $absDir) }
